@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>East Cleveland Streetlight Tracker (neighbor-run)</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+<style>
+  :root { --primary-navy: #1d2b4a; --secondary-blue: #2F5597; --bg-light: #F8F9FA; }
+  body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Tahoma, Verdana, sans-serif; background: var(--bg-light); color: #333; }
+  .navbar-custom { background: var(--primary-navy); }
+  .hero-section { background: var(--primary-navy); color: #fff; padding: 2rem 1rem; margin-bottom: 1.5rem; border-bottom: 4px solid #ffc107; }
+  .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .stat-card { background: #fff; border-left: 5px solid var(--secondary-blue); padding: 1rem; border-radius: 8px; height: 100%; }
+  .stat-number { font-size: 1.75rem; font-weight: bold; color: var(--primary-navy); }
+  .badge-no-illum { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+  .badge-blinking { background: #fff3cd; color: #664d03; border: 1px solid #ffecb5; }
+  .badge-missing { background: #e2e3e5; color: #383d41; border: 1px solid #ced4da; }
+  /* City progress bar */
+  .progress-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 0; font-size: .78rem; line-height: 1.25; }
+  .progress-steps li { display: flex; align-items: flex-start; gap: 4px; padding-right: 10px; position: relative; color: #6c757d; min-width: 70px; }
+  .progress-steps .dot { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #ced4da; background: #fff; margin-top: 1px; }
+  .progress-steps li.done { color: #1f2328; }
+  .progress-steps li.done .dot { background: #0f766e; border-color: #0f766e; }
+  .progress-steps li.wait .dot { border-color: #c2410c; border-style: dashed; }
+  .progress-steps li.wait { color: #9a3412; }
+  .progress-steps .when { display: block; font-size: .72rem; color: #6c757d; }
+  .who-fixes { font-size: .75rem; color: #4b5563; margin-bottom: 3px; }
+  .city-note { font-size: .75rem; color: #9a3412; margin-top: 3px; }
+  .badge-working { background: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+  .badge-ward { background: #e2e3e5; color: #383d41; font-weight: 600; }
+  .badge-precinct { background: #cff4fc; color: #055160; font-weight: 600; }
+  .badge { white-space: normal; text-align: left; }
+  .table-custom th { background: var(--secondary-blue); color: #fff; font-weight: 600; white-space: nowrap; }
+  .form-section { background: #fff; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+  .notice { background: #fff8e1; border: 1px solid #ffe08a; border-radius: 10px; padding: .75rem 1rem; font-size: .92rem; }
+
+  /* Status switch */
+  .status-switch { display: flex; align-items: center; gap: .5rem; margin: 0; }
+  .status-switch .form-check-input { width: 3em; height: 1.6em; cursor: pointer; margin: 0; }
+  .status-switch .form-check-input:checked { background-color: #198754; border-color: #198754; }
+  .status-switch .form-check-input:not(:checked) { background-color: #f8d7da; border-color: #dc3545; }
+  .status-switch .lbl { font-weight: 700; font-size: .9rem; min-width: 4.5em; }
+  .lbl.on { color: #0f5132; } .lbl.off { color: #b02a37; }
+  .updated { font-size: .75rem; color: #6c757d; margin-top: .25rem; }
+
+  /* Quick-details panel */
+  .detail-row > td { background: #f4f7fb !important; }
+  .quick { border: 2px solid var(--secondary-blue); border-radius: 10px; background: #fff; padding: 1rem; }
+  .quick h3 { font-size: 1rem; font-weight: 700; color: var(--primary-navy); margin: 0 0 .6rem; }
+  .quick .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .4rem .9rem; }
+  .quick .form-check { padding: .45rem .5rem .45rem 2rem; border: 1px solid #dee2e6; border-radius: 8px; margin: 0; }
+  .quick .form-check:has(input:checked) { border-color: var(--secondary-blue); background: #eef3fb; }
+  .quick .form-check-input { cursor: pointer; } .quick .form-check-label { cursor: pointer; width: 100%; }
+  .quick .btn { min-height: 44px; }
+  .saved-msg { font-size: .9rem; }
+  .locate-box { border: 1px dashed #9db3d6; border-radius: 10px; padding: .85rem 1rem; background: #f7faff; }
+  .locate-box .btn { min-height: 44px; }
+
+  @media (max-width: 767.98px) {
+    .hero-section { padding: 1.5rem .75rem; } .hero-section h1 { font-size: 1.5rem; }
+    .responsive-table-wrapper table thead { display: none; }
+    .responsive-table-wrapper table, .responsive-table-wrapper tbody, .responsive-table-wrapper tr, .responsive-table-wrapper td { display: block; width: 100%; }
+    .responsive-table-wrapper tr.item-row { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 1rem; margin-bottom: .25rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+    .responsive-table-wrapper tr.detail-row { margin-bottom: 1rem; }
+    .responsive-table-wrapper tr.item-row td { padding: .35rem 0; border: none !important; display: flex; justify-content: space-between; align-items: center; text-align: right; gap: .75rem; }
+    .responsive-table-wrapper tr.item-row td::before { content: attr(data-label); font-weight: 600; color: var(--primary-navy); text-align: left; font-size: .85rem; flex: none; }
+    .responsive-table-wrapper td.address-cell { font-size: 1.05rem; border-bottom: 1px solid #f0f0f0 !important; padding-bottom: .5rem; margin-bottom: .5rem; }
+    .responsive-table-wrapper td.notes-cell, .responsive-table-wrapper td.visual-cell { flex-direction: column; align-items: flex-start; text-align: left; }
+    .responsive-table-wrapper tr.detail-row td { padding: 0; border: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom shadow-sm sticky-top">
+  <div class="container">
+    <span class="navbar-brand fw-bold"><i class="bi bi-lightbulb-fill text-warning me-2" aria-hidden="true"></i>East Cleveland Streetlight Tracker</span>
+    <span class="navbar-text text-light small d-none d-md-inline">A neighbor-run list from Street Dreams</span>
+  </div>
+</nav>
+
+<header class="hero-section text-center">
+  <div class="container px-3">
+    <h1 class="fw-bold mb-2">Streetlight Tracker</h1>
+    <p class="mb-3">See which lights neighbors have found out, and flip the switch when a light goes out or comes back on.</p>
+    <div class="d-flex justify-content-center gap-2 flex-wrap">
+      <a href="#tracker-section" class="btn btn-warning px-3 fw-semibold"><i class="bi bi-search me-1" aria-hidden="true"></i> See the lights</a>
+      <a href="#report-section" class="btn btn-outline-light px-3"><i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Add a light</a>
+    </div>
+  </div>
+</header>
+
+<main class="container mb-5 px-3">
+
+  <div class="notice mb-4" role="note">
+    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+    <b>This list is kept by neighbors, not by the City of East Cleveland.</b> When you flip a switch or add a light, it's shared with everyone, usually within a few minutes.
+    To get a light <b>repaired</b>, please also report it to The Illuminating Company (FirstEnergy) or the city.
+    <div id="cityNote" class="small mt-1 d-none"><i class="bi bi-envelope-check me-1" aria-hidden="true"></i>Neighbors send this list to the City Service Department every week. <b>City progress</b> shows when it was sent, when the City confirmed receiving it, and any update from the City.</div>
+    <div id="syncStatus" class="small mt-1 text-muted" aria-live="polite"></div>
+  </div>
+
+  <div class="row g-2 g-md-3 mb-4">
+    <div class="col-6 col-md"><div class="stat-card card-custom"><div class="text-muted small fw-bold">TRACKED</div><div class="stat-number" id="stat-total">0</div></div></div>
+    <div class="col-6 col-md"><div class="stat-card card-custom" style="border-left-color:#dc3545"><div class="text-muted small fw-bold">OUT</div><div class="stat-number text-danger" id="stat-no-illum">0</div></div></div>
+    <div class="col-6 col-md"><div class="stat-card card-custom" style="border-left-color:#ffc107"><div class="text-muted small fw-bold">BLINKING / DIM</div><div class="stat-number" style="color:#997404" id="stat-blinking">0</div></div></div>
+    <div class="col-6 col-md"><div class="stat-card card-custom" style="border-left-color:#6c757d"><div class="text-muted small fw-bold">POLE MISSING / DAMAGED</div><div class="stat-number" id="stat-missing">0</div></div></div>
+    <div class="col-12 col-md"><div class="stat-card card-custom" style="border-left-color:#198754"><div class="text-muted small fw-bold">BACK WORKING</div><div class="stat-number text-success" id="stat-working">0</div></div></div>
+  </div>
+
+  <section id="tracker-section" class="card card-custom p-3 p-md-4 mb-4" aria-labelledby="tracker-h">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-2">
+      <div>
+        <h2 id="tracker-h" class="fw-bold mb-1 h5" style="color:var(--primary-navy)"><i class="bi bi-list-stars me-2" aria-hidden="true"></i>Streetlights neighbors are tracking</h2>
+        <p class="text-muted small mb-0">Flip a light's switch to mark it out or working again.</p>
+      </div>
+      <div class="d-flex flex-column flex-sm-row flex-wrap gap-2">
+        <label class="visually-hidden" for="searchInput">Search</label>
+        <input type="search" id="searchInput" class="form-control form-control-sm" placeholder="Search address or notes" style="min-width:180px">
+        <label class="visually-hidden" for="statusFilter">Status</label>
+        <select id="statusFilter" class="form-select form-select-sm">
+          <option value="ALL">All lights</option>
+          <option value="out">Out or faulty</option>
+          <option value="working">Back working</option>
+        </select>
+        <label class="visually-hidden" for="wardFilter">Ward</label>
+        <select id="wardFilter" class="form-select form-select-sm">
+          <option value="ALL">All wards</option><option value="Ward 2">Ward 2</option><option value="Ward 3">Ward 3</option><option value="Ward 4">Ward 4</option>
+        </select>
+      </div>
+    </div>
+    <div class="responsive-table-wrapper table-responsive">
+      <table class="table table-custom align-middle mb-0">
+        <thead><tr>
+          <th style="width:160px">Light working?</th><th style="width:170px">Address</th><th>Ward / Precinct</th>
+          <th style="width:150px">Condition</th><th class="city-col" style="width:230px">City progress</th><th>How to find it</th><th>Notes</th><th style="width:100px">Map</th>
+        </tr></thead>
+        <tbody id="inventoryTableBody"></tbody>
+      </table>
+    </div>
+    <p id="noResults" class="text-muted small mt-3 d-none">No lights match your search.</p>
+  </section>
+
+  <section id="report-section" class="form-section" aria-labelledby="report-h">
+    <h2 id="report-h" class="fw-bold h4 mb-1" style="color:var(--primary-navy)"><i class="bi bi-plus-circle-fill me-2 text-warning" aria-hidden="true"></i>Add a light that's not on the list</h2>
+    <p class="text-muted small mb-3">It's added to the shared list for everyone, usually within a few minutes.</p>
+    <div id="alertSuccess" class="alert alert-success d-none" role="status"></div>
+    <form id="outageForm">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="locate-box">
+            <div class="fw-semibold small mb-2">Find the address for me</div>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline-primary" id="useLocationBtn"><i class="bi bi-geo-alt-fill me-1" aria-hidden="true"></i>Use my location</button>
+              <label class="btn btn-outline-primary mb-0" for="photoInput"><i class="bi bi-camera-fill me-1" aria-hidden="true"></i>Get address from a photo</label>
+              <input type="file" id="photoInput" accept="image/jpeg,image/*" class="visually-hidden">
+            </div>
+            <p class="small text-muted mt-2 mb-0">Stand near the broken light and tap <b>Use my location</b>, or pick a photo you took of it. We only use the location to look up the nearest address. We never save your exact location, and photos stay on your device.</p>
+            <div id="locateStatus" class="small mt-2" aria-live="polite"></div>
+            <div id="photoPreview" class="mt-2 d-none">
+              <img id="photoThumb" alt="Your photo of the streetlight" style="max-width:160px;max-height:160px;border-radius:8px;border:1px solid #dee2e6">
+              <div class="mt-2"><a id="photoDownload" class="btn btn-sm btn-outline-secondary" download="streetlight-photo.jpg"><i class="bi bi-download me-1" aria-hidden="true"></i>Save a copy without location info</a>
+              <div class="small text-muted mt-1">Want to share the photo? Email that copy to <a href="mailto:StreetDreamsEC@gmail.com">StreetDreamsEC@gmail.com</a>.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6"><label for="formAddress" class="form-label fw-semibold small">Street address <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="formAddress" placeholder="e.g. 15890 Forest Hills Blvd" required></div>
+        <div class="col-6 col-md-3"><label for="formWard" class="form-label fw-semibold small">Ward</label>
+          <select class="form-select" id="formWard"><option value="">Not sure</option><option>Ward 1</option><option>Ward 2</option><option>Ward 3</option><option>Ward 4</option></select></div>
+        <div class="col-6 col-md-3"><label for="formPrecinct" class="form-label fw-semibold small">Precinct</label>
+          <input type="text" class="form-control" id="formPrecinct" placeholder="e.g. 3-C"></div>
+        <div class="col-12"><fieldset><legend class="form-label fw-semibold small">What's wrong? <span class="text-danger">*</span></legend>
+          <div class="quick p-2 border-0"><div class="choices" id="formReasons"></div></div></fieldset></div>
+        <div class="col-12"><label for="formVisual" class="form-label fw-semibold small">How to find it</label>
+          <input type="text" class="form-control" id="formVisual" placeholder="e.g. near the driveway of the brick ranch house"></div>
+        <div class="col-12"><label for="formNotes" class="form-label fw-semibold small">Other details</label>
+          <textarea class="form-control" id="formNotes" rows="2"></textarea></div>
+        <div class="col-12"><div class="small fw-semibold text-muted">Optional and private: only the organizers see these, in case we have a question. They are never shown on the list.</div></div>
+        <div class="col-12 col-md-6"><label for="formName" class="form-label fw-semibold small">Your name (optional)</label>
+          <input type="text" class="form-control" id="formName" maxlength="80" autocomplete="name"></div>
+        <div class="col-12 col-md-6"><label for="formContact" class="form-label fw-semibold small">Phone or email (optional)</label>
+          <input type="text" class="form-control" id="formContact" maxlength="120"></div>
+        <div class="col-12 text-end">
+          <button type="reset" class="btn btn-outline-secondary me-2">Clear</button>
+          <button type="submit" class="btn btn-primary px-4 fw-semibold" style="background:var(--primary-navy);border-color:var(--primary-navy)"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i> Add to list</button>
+        </div>
+      </div>
+    </form>
+  </section>
+</main>
+
+<footer class="text-white py-3 mt-5" style="background:var(--primary-navy)">
+  <div class="container text-center px-3">
+    <p class="mb-1 small">A neighbor-run streetlight list from Street Dreams. Not an official City of East Cleveland service.</p>
+    <p class="mb-0 small" style="color:#dbe3f0">Questions? <a class="link-light" href="mailto:StreetDreamsEC@gmail.com">StreetDreamsEC@gmail.com</a></p>
+  </div>
+</footer>
+
+<script>
+const ORGANIZER_EMAIL = 'StreetDreamsEC@gmail.com';
+const OUT_REASONS = ['Completely out', 'Blinking or flickering', 'Very dim', 'Pole missing or knocked down', 'Pole damaged or leaning', 'Other'];
+const ON_REASONS = ['Back on and working', 'On, but dim', 'On, but still flickers sometimes', 'New light or pole installed', 'Other'];
+
+let inventoryData = [{"id": 1, "address": "1911 Brightwood St", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Open residential lawn parcel along Brightwood St", "map_url": "https://www.google.com/maps/search/?api=1&query=1911+Brightwood+St%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 2, "address": "12900 Forest Hill Ave", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Intersection area of Forest Hill Ave and Roxbury Rd", "map_url": "https://www.google.com/maps/search/?api=1&query=12900+Forest+Hill+Ave%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 3, "address": "15620 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "Cleveland Heights, OH 44112", "condition": "No illumination", "visual_ref": "Arched street light pole adjacent to roadway", "map_url": "https://www.google.com/maps/search/?api=1&query=15620+Forest+Hills+Blvd%2C+Cleveland+Heights,+OH+44112", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 4, "address": "15675 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "Rapid blinking light", "visual_ref": "Residential lot with single-story ranch home set back from street", "map_url": "https://www.google.com/maps/@41.5235481,-81.5705298,3a,90y,347.2h,89.83t/data=!3m7!1e1!3m5!1stF8OCOqt4E_8HgN6jD4qcQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0.1680247496192635%26panoid%3DtF8OCOqt4E_8HgN6jD4qcQ%26yaw%3D347.1958875332981!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 5, "address": "15787 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Light pole visible in front of single-story residential home", "map_url": "https://www.google.com/maps/@41.5237993,-81.5694948,3a,75y,332.26h,90t/data=!3m7!1e1!3m5!1sMI5GIwOEZRvmQZZ5mrskJg!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3DMI5GIwOEZRvmQZZ5mrskJg%26yaw%3D332.25674!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 6, "address": "15890 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Tall street light pole centered along roadway in front of homes", "map_url": "https://www.google.com/maps/@41.5239878,-81.5686931,3a,75y,153.23h,90t/data=!3m7!1e1!3m5!1s927KceMR5azPwVGGubc8XQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3D927KceMR5azPwVGGubc8XQ%26yaw%3D153.22664!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 7, "address": "16000 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Located near the intersection of Forest Hills Blvd and Walden Rd", "map_url": "https://www.google.com/maps/@41.5240019,-81.5677954,3a,90y,74.88h,100.08t/data=!3m7!1e1!3m5!1sK2nKXa-U5PGjuF2ngYRN5A!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-10.079535709573463%26panoid%3DK2nKXa-U5PGjuF2ngYRN5A%26yaw%3D74.87798126647088!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 8, "address": "16064 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential lot along Forest Hills Blvd near green space crossover", "map_url": "https://www.google.com/maps/@41.5241697,-81.5671233,3a,90y,181.28h,80.81t/data=!3m7!1e1!3m5!1shrrX49SOaAlkdJcLnXZB8g!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D9.186067755191587%26panoid%3DhrrX49SOaAlkdJcLnXZB8g%26yaw%3D181.27945865597488!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 9, "address": "16173 Forest Hills Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Reported to The Illuminating Company, which handles burned-out bulbs. Lights on this stretch were fixed Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Heavy tree canopy line near Crossover intersection", "map_url": "https://www.google.com/maps/@41.5241877,-81.5663174,3a,75y,21.82h,87.38t/data=!3m7!1e1!3m5!1scVbjOIRZuDXkSEN9UDG9nw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D2.620448061451995%26panoid%3DcVbjOIRZuDXkSEN9UDG9nw%26yaw%3D21.82276628966229!7i13312!8i6656?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}, {"id": 10, "address": "15609 Glynn Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential lot with split-level/two-story home and wide front lawn", "map_url": "https://www.google.com/maps/@41.5294575,-81.5716798,3a,75y,43.81h,86.57t/data=!3m7!1e1!3m5!1sslztvWD8Pjv-RNQhoep9Tw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D3.425550581765947%26panoid%3DslztvWD8Pjv-RNQhoep9Tw%26yaw%3D43.80988100691633!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 11, "address": "15925 Glynn Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential street with two-story homes and mature tree canopy", "map_url": "https://www.google.com/maps/@41.5294482,-81.5686858,3a,75y,22.69h,89.04t/data=!3m7!1e1!3m5!1sPjGs7d_11RJUPg6GOYLX4A!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0.9553681752702516%26panoid%3DPjGs7d_11RJUPg6GOYLX4A%26yaw%3D22.687227279861112!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 12, "address": "16141 Glynn Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential area with Tudor‑style home; pole near driveway", "map_url": "https://www.google.com/maps/@41.5294562,-81.5668536,3a,75y,315.57h,91.91t/data=!3m7!1e1!3m5!1s1fduJotMnY2p1lmsvu1cnQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-1.9105332130020827%26panoid%3D1fduJotMnY2p1lmsvu1cnQ%26yaw%3D315.57020054072603!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 13, "address": "15592 Henley Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "Damaged / leaning pole", "visual_ref": "Tree-lined street section near Henley Rd residential parcel", "map_url": "https://www.google.com/maps/@41.5257222,-81.5711854,3a,75y,210.62h,98.61t/data=!3m7!1e1!3m5!1sOSblm7nXzZ4fYkgIu2um0w!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-8.607762199720568%26panoid%3DOSblm7nXzZ4fYkgIu2um0w%26yaw%3D210.61711415823876!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 14, "address": "15696 Henley Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Pole along residential street curb with heavy tree canopy coverage", "map_url": "https://www.google.com/maps/@41.5259623,-81.5704084,3a,90y,333.21h,91.61t/data=!3m7!1e1!3m5!1sdRjNAQaFAHZNuUHTWsVhjA!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-1.6118577435373709%26panoid%3DdRjNAQaFAHZNuUHTWsVhjA%26yaw%3D333.20500562615285!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 15, "address": "15970 Henley Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Located at the corner/curve of Henley Rd and Mt Vernon Blvd", "map_url": "https://www.google.com/maps/@41.5268772,-81.5678809,3a,75y,124.12h,107.11t/data=!3m7!1e1!3m5!1s_CWgfciB6viO-s-e_o5VzQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-17.109672461728053%26panoid%3D_CWgfciB6viO-s-e_o5VzQ%26yaw%3D124.12244707071417!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 16, "address": "16007 Henley Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Mature tree line along street curb in front of multi-story home", "map_url": "https://www.google.com/maps/@41.5272929,-81.5673713,3a,75y,308.25h,95.7t/data=!3m7!1e1!3m5!1snA0opZV1Asx7jp4kYai4hA!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-5.703117595480194%26panoid%3DnA0opZV1Asx7jp4kYai4hA%26yaw%3D308.25102011487195!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 17, "address": "1903 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Near intersection of Lee and Terrace just before bus stop going up", "map_url": "https://www.google.com/maps/@41.5310257,-81.5761913,3a,75y,218.96h,90t/data=!3m7!1e1!3m5!1smVF3QLgeMAhbgLXSwAvKiQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3DmVF3QLgeMAhbgLXSwAvKiQ%26yaw%3D218.95694!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 18, "address": "1907 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Need to be Install by East Cleveland ", "city": "East Cleveland, OH 44112", "condition": "Missing light pole", "visual_ref": "Across the street from the bus stop at 1903 Lee Blvd going up", "map_url": "https://www.google.com/maps/place/1907+Lee+Blvd,+East+Cleveland,+OH+44112/@41.5307359,-81.5759913,3a,48.9y,48.47h,66.7t/data=!3m7!1e1!3m5!1sUKjK4h1yeZ4F7mTKf9sd9w!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D23.302540512184407%26panoid%3DUKjK4h1yeZ4F7mTKf9sd9w%26yaw%3D48.47118131006232!7i16384!8i8192!4m13!1m7!3m6!1s0x8830fc27385b12cf:0x755c74a1b5475e62!2s1907+Lee+Blvd,+East+Cleveland,+OH+44112!3b1!8m2!3d41.5309334!4d-81.5761663!3m4!1s0x8830fc27385b12cf:0x755c74a1b5475e62!8m2!3d41.5309334!4d-81.5761663?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 19, "address": "2083 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Single‑story homes; pole near curb, heavy tree coverage", "map_url": "https://www.google.com/maps/@41.5270505,-81.5734763,3a,73.7y,164.77h,85.18t/data=!3m7!1e1!3m5!1sNngHpGHwI1AgbOWHG-7xlQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D4.818504486798048%26panoid%3DNngHpGHwI1AgbOWHG-7xlQ%26yaw%3D164.77247442738954!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 20, "address": "2103 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Single-story ranch-style home; pole along tree line near driveway", "map_url": "https://www.google.com/maps/@41.5262513,-81.5731742,3a,75y,101.41h,85.83t/data=!3m7!1e1!3m5!1si-xGDRJb_qE9zEJ8l0BRTw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D4.166971663921359%26panoid%3Di-xGDRJb_qE9zEJ8l0BRTw%26yaw%3D101.40533792606942!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 21, "address": "2123 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "Missing light pole / Felled base", "visual_ref": "Damaged/felled pole base along curb near park fence line", "map_url": "https://www.google.com/maps/search/?api=1&query=2123+Lee+Blvd%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 22, "address": "2203 Lee Blvd", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Arched street light pole clearly visible on curb near residential lots", "map_url": "https://www.google.com/maps/search/?api=1&query=2203+Lee+Blvd%2C+East+Cleveland,+OH+44112", "status": "out"}, {"id": 23, "address": "2121 Newbury Dr", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Street light pole nestled between large shade trees near curb", "map_url": "https://www.google.com/maps/@41.5269723,-81.571678,3a,75y,71.46h,90t/data=!3m7!1e1!3m5!1stu0rNTgQx5tyWx1jHD79lw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3Dtu0rNTgQx5tyWx1jHD79lw%26yaw%3D71.461365!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 24, "address": "2240 Newbury Dr", "ward": "Ward 3", "precinct": "3-C", "notes": "", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Located near the intersection of Newbury Dr and Cleviden Rd", "map_url": "https://www.google.com/maps/@41.5249818,-81.5708439,3a,75y,213.94h,93.05t/data=!3m7!1e1!3m5!1sTQhJ9zwVVCnXhDNAIGfXig!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-3.0455462996579996%26panoid%3DTQhJ9zwVVCnXhDNAIGfXig%26yaw%3D213.93864287642052!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 25, "address": "1869 Penrose Ave", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Tree-lined open lawn lot along Penrose Ave", "map_url": "https://www.google.com/maps/search/?api=1&query=1869+Penrose+Ave%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 26, "address": "1897 Penrose Ave", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Two-story home with front porch steps & lawn", "map_url": "https://www.google.com/maps/search/?api=1&query=1897+Penrose+Ave%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 27, "address": "1905 Roxbury Rd", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Two-story residential home near Forest Hill Ave corner", "map_url": "https://www.google.com/maps/search/?api=1&query=1905+Roxbury+Rd%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 28, "address": "1877 Sheldon Ave", "ward": "Ward 4", "precinct": "4-C", "notes": "Need to be Install by East Cleveland ", "city": "East Cleveland, OH 44112", "condition": "Missing light pole", "visual_ref": "North of the fire Hydrant", "map_url": "https://www.google.com/maps/@41.5362865,-81.5719022,3a,75y,56.65h,90t/data=!3m7!1e1!3m5!1stzQA35T5mlMDVf-atVAuAQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3DtzQA35T5mlMDVf-atVAuAQ%26yaw%3D56.645763!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 29, "address": "1843 Wadena St", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential street parcel near driveway entrance", "map_url": "https://www.google.com/maps/search/?api=1&query=1843+Wadena+St%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 30, "address": "1869 Wadena St", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Open grassy lot with perimeter posts along street curb", "map_url": "https://www.google.com/maps/search/?api=1&query=1869+Wadena+St%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 31, "address": "1891 Wadena St", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Multi-story home with front driveway and hedge line", "map_url": "https://www.google.com/maps/search/?api=1&query=1891+Wadena+St%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 32, "address": "1908 Wadena St", "ward": "Ward 2", "precinct": "2-B", "notes": "Added from field map report (09/22/2026)", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Residential structure near Forest Hill Ave corner", "map_url": "https://www.google.com/maps/search/?api=1&query=1908+Wadena+St%2C+East+Cleveland%2C+OH+44112", "status": "out"}, {"id": 33, "address": "2282 Walden Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "The Illuminating Company has been notified of\nnearly 100% of the lights on the residential\nSection of FH Blvd are not working. They are\nresponsible for changing blown bulbs", "city": "East Cleveland, OH 44112", "condition": "No illumination", "visual_ref": "Brick ranch home near Walden Rd & Forest Hills Blvd; pole near driveway, front lawn shrubbery & mature shade trees", "map_url": "https://www.google.com/maps/@41.5243674,-81.567979,3a,75y,218.18h,89.47t/data=!3m7!1e1!3m5!1skHlqjZ7ypRWLdahwI75jdQ!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0.5309691487914705%26panoid%3DkHlqjZ7ypRWLdahwI75jdQ%26yaw%3D218.18106866952294!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "out"}, {"id": 34, "address": "2565 Walden Rd", "ward": "Ward 3", "precinct": "3-C", "notes": "Was rapidly blinking; working again as of Nov 12, 2026.", "city": "East Cleveland, OH 44112", "condition": "Rapid blinking light", "visual_ref": "Residential area on Walden Rd; light pole near curb and front property line", "map_url": "https://www.google.com/maps/@41.5249591,-81.5682921,3a,75y,116.18h,93.81t/data=!3m7!1e1!3m5!1sPvDyx2rpNgJJhfbfdrd2Yw!2e0!6shttps:%2F%2Fstreetviewpixels-pa.googleapis.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D-3.8107943295216558%26panoid%3DPvDyx2rpNgJJhfbfdrd2Yw%26yaw%3D116.18493864337836!7i16384!8i8192?entry=ttu&g_ep=EgoyMDI2MDkxNi4wIKXMDSoASAFQAw%3D%3D", "status": "working", "fixed_detail": "Back on and working", "updated": "2026-11-12"}];
+
+// ---- shared list: Google Form (write) + published Google Sheet "Public" tab (read) ----
+const FORM_ACTION = 'https://docs.google.com/forms/d/e/1FAIpQLSfCtIXcjLg3AwT0WWwXineLdChx7R5k3-1OIp0nUcFLmi7l5A/formResponse';
+const ENTRY = { kind: 'entry.1587391398', lightId: 'entry.1586785630', address: 'entry.1219902280', status: 'entry.210166088',
+  details: 'entry.941998316', ward: 'entry.1013254724', precinct: 'entry.1200938261', findIt: 'entry.1450824645',
+  pole: 'entry.794930578', note: 'entry.122716548', name: 'entry.1705370375', contact: 'entry.1070017264' };
+const SHEET_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSPuZG1-a84U2m-G7TW40BjItVgKkwym5_LNfzgXuNwLWO0QdXnTvCvFiiJyROkIOQVX-ZgxWNSA_tU/pub?gid=1647595183&single=true&output=csv';
+// "City Status" tab, published as CSV. Leave blank until the weekly City report is set up.
+const CITY_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSPuZG1-a84U2m-G7TW40BjItVgKkwym5_LNfzgXuNwLWO0QdXnTvCvFiiJyROkIOQVX-ZgxWNSA_tU/pub?gid=1919592201&single=true&output=csv';
+let cityStatus = {};
+const KIND_NEW = 'New light', KIND_UPDATE = 'Update to a light on the list';
+const NOTICED_RE = /^Noticed (\d{4}-\d{2}-\d{2})\.\s*/;
+
+inventoryData.forEach(d => { d.id = String(d.id); });
+
+async function sendToSheet(fields) {
+  const body = new URLSearchParams();
+  Object.entries(fields).forEach(([k, v]) => { if (ENTRY[k] && v != null && v !== '') body.append(ENTRY[k], String(v)); });
+  // Google Forms doesn't allow reading the reply from another site, so a finished request counts as sent.
+  await fetch(FORM_ACTION, { method: 'POST', mode: 'no-cors', body });
+}
+function noteWithDate(date, note) { return (date && date !== today() ? 'Noticed ' + date + '. ' : '') + (note || ''); }
+
+// Small CSV reader (handles quotes, commas and line breaks inside cells)
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim() !== ''));
+}
+function toIsoDate(stamp) {  // "11/14/2026 18:31:30" -> "2026-11-14"
+  const m = String(stamp).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : '';
+}
+function applySheetRows(rows) {
+  // Columns: Timestamp, What is this?, Light ID, Street address, Is the light working?, What's going on?,
+  //          Ward, Precinct, How to find it, Pole number, Other details
+  rows.slice(1).forEach(r => {
+    const [stamp, kind, lightIdRaw, address, status, details, ward, precinct, findIt, pole, noteRaw] = r.map(v => (v || '').trim());
+    if (!address) return;
+    let note = noteRaw, noticed = toIsoDate(stamp);
+    const m = note.match(NOTICED_RE); if (m) { noticed = m[1]; note = note.replace(NOTICED_RE, ''); }
+    let id = lightIdRaw, item = id && inventoryData.find(d => d.id === id);
+    if (!item && kind === KIND_NEW) {
+      if (!id) id = 'n-' + address.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      item = inventoryData.find(d => d.id === id);
+      if (!item) {
+        const city = 'East Cleveland, OH 44112';
+        item = { id, address, city, ward, precinct, visual_ref: findIt, notes: note, status: 'out', added_here: true,
+          map_url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address + ', ' + city) };
+        inventoryData.unshift(item);
+        note = '';
+      }
+    }
+    if (!item) return;
+    item.status = /working/i.test(status) ? 'working' : 'out';
+    if (item.status === 'working') item.fixed_detail = details; else { item.condition = details || item.condition; item.fixed_detail = ''; }
+    item.updated = noticed; item.update_note = note;
+    if (pole) item.pole = pole;
+    if (ward && !item.ward) item.ward = ward;
+    if (precinct && !item.precinct) item.precinct = precinct;
+  });
+}
+function setSync(msg) { const el = document.getElementById('syncStatus'); if (el) el.innerHTML = msg; }
+async function loadCity() {
+  if (!CITY_CSV) return;
+  try {
+    const r = await fetch(CITY_CSV + '&t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Columns: Light ID, Address, Who fixes, First sent, Last sent, Received, City status, City status date
+    cityStatus = {};
+    parseCsv(await r.text()).slice(1).forEach(c => {
+      const [id, , who, firstSent, , received, status, statusDate] = c.map(v => (v || '').trim());
+      if (id) cityStatus[id] = { who, firstSent, received, status, statusDate };
+    });
+  } catch (e) { cityStatus = {}; }
+}
+async function loadShared() {
+  await loadCity();
+  try {
+    const r = await fetch(SHEET_CSV + '&t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    applySheetRows(parseCsv(await r.text()));
+    setSync('<i class="bi bi-cloud-check me-1" aria-hidden="true"></i>Showing the latest shared updates.');
+  } catch (e) {
+    setSync('<i class="bi bi-cloud-slash me-1" aria-hidden="true"></i>Couldn\'t load the latest shared updates right now. Showing the last saved list.');
+  }
+  filterData();
+}
+
+// ---- helpers ----
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+const safeUrl = u => /^https:\/\/(www\.)?google\.com\/maps/.test(u || '') ? u : '';
+function conditionBadge(item) {
+  if (item.status === 'working') return { cls: 'badge-working', text: item.fixed_detail || 'Back working' };
+  const c = (item.condition || '').toLowerCase();
+  if (c.includes('blink') || c.includes('flicker') || c.includes('dim')) return { cls: 'badge-blinking', text: item.condition };
+  if (c.includes('missing') || c.includes('pole') || c.includes('felled') || c.includes('leaning')) return { cls: 'badge-missing', text: item.condition };
+  return { cls: 'badge-no-illum', text: item.condition || 'Out' };
+}
+function mailtoFor(item, extra) {
+  const lines = [
+    'Streetlight update', '',
+    'Address: ' + item.address + (item.city ? ', ' + item.city : ''),
+    'Status: ' + (item.status === 'working' ? 'WORKING' : 'OUT / FAULTY'),
+    'Details: ' + (item.status === 'working' ? (item.fixed_detail || '') : (item.condition || '')),
+    'Date noticed: ' + fmtDate(item.updated || today())
+  ];
+  if (item.update_note) lines.push('Note: ' + item.update_note);
+  if (extra) lines.push(extra);
+  return 'mailto:' + ORGANIZER_EMAIL + '?subject=' + encodeURIComponent('Streetlight update: ' + item.address) + '&body=' + encodeURIComponent(lines.join('\n'));
+}
+
+// ---- City progress bar ----
+function whoFixes(item) { return /missing|pole|felled|leaning/i.test(item.condition || '') ? 'City' : 'FirstEnergy'; }
+function progressHtml(item) {
+  const c = cityStatus[item.id] || {};
+  const who = c.who || whoFixes(item);
+  const fixedByCity = c.status === 'Fixed';
+  const working = item.status === 'working';
+  const inProgress = c.status === 'Scheduled' || c.status === 'Reported to FirstEnergy';
+  const step = (cls, label, when) => `<li class="${cls}"><span class="dot" aria-hidden="true"></span><span>${label}${when ? `<span class="when">${esc(fmtDate(when))}</span>` : ''}</span></li>`;
+  const steps = [
+    c.firstSent ? step('done', 'Sent to City', c.firstSent) : step('', working ? 'Not sent' : 'Goes in next report', ''),
+    c.received ? step('done', 'City received', c.received) : step(c.firstSent && !working ? 'wait' : '', c.firstSent && !working ? 'Waiting for City confirmation' : 'City received', ''),
+    inProgress || fixedByCity ? step('done', inProgress ? esc(c.status) : 'In progress', inProgress ? c.statusDate : '') : step('', who === 'City' ? 'Scheduled' : 'Reported to FirstEnergy', ''),
+    working || fixedByCity ? step('done', 'Fixed', fixedByCity ? c.statusDate : item.updated) : step('', 'Fixed', '')
+  ];
+  const label = who === 'City' ? 'City replaces poles' : 'FirstEnergy replaces bulbs';
+  const note = c.status === 'Not ours' ? `<div class="city-note">The City says this light isn't theirs to fix.</div>` : '';
+  const sr = 'City progress for ' + item.address;
+  return `<div class="who-fixes">${label}</div><ol class="progress-steps" aria-label="${esc(sr)}">${steps.join('')}</ol>${note}`;
+}
+
+// ---- table ----
+function renderTable(rows) {
+  const tbody = document.getElementById('inventoryTableBody');
+  tbody.innerHTML = '';
+  rows.forEach(item => {
+    const b = conditionBadge(item);
+    const on = item.status === 'working';
+    const map = safeUrl(item.map_url);
+    const tr = document.createElement('tr');
+    tr.className = 'item-row'; tr.id = 'row-' + item.id;
+    tr.innerHTML = `
+      <td data-label="Light working?">
+        <div>
+          <div class="form-check form-switch status-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="sw-${item.id}" ${on ? 'checked' : ''} aria-describedby="lbl-${item.id}">
+            <label class="lbl ${on ? 'on' : 'off'}" id="lbl-${item.id}" for="sw-${item.id}">${on ? 'Working' : 'Out'}</label>
+          </div>
+          ${item.updated ? `<div class="updated">Updated ${esc(fmtDate(item.updated))}</div>` : ''}
+        </div>
+      </td>
+      <td data-label="Address" class="fw-bold text-primary address-cell">${esc(item.address)}</td>
+      <td data-label="Ward / Precinct"><span class="badge badge-ward px-2 py-1">${esc(item.ward || '-')}</span> <span class="badge badge-precinct px-2 py-1">${esc(item.precinct || '-')}</span></td>
+      <td data-label="Condition"><span class="badge ${b.cls} px-2 py-1">${esc(b.text)}</span></td>
+      ${CITY_CSV ? `<td data-label="City progress" class="city-col">${progressHtml(item)}</td>` : ''}
+      <td data-label="How to find it" class="small visual-cell">${esc(item.visual_ref || '-')}</td>
+      <td data-label="Notes" class="small text-muted notes-cell">${item.notes ? esc(item.notes).replace(/\n/g, ' ') : '-'}${item.update_note ? `<div class="mt-1"><b>Latest:</b> ${esc(item.update_note)}</div>` : ''}</td>
+      <td data-label="Map">${map ? `<a href="${esc(map)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary py-1 px-3"><i class="bi bi-map me-1" aria-hidden="true"></i>Map<span class="visually-hidden"> for ${esc(item.address)} (opens in a new tab)</span></a>` : '-'}</td>`;
+    tbody.appendChild(tr);
+    tr.querySelector('.form-check-input').addEventListener('change', e => openQuick(item, e.target));
+  });
+  document.getElementById('noResults').classList.toggle('d-none', rows.length > 0);
+  updateStats();
+}
+
+// ---- quick-details panel shown when a switch is flipped ----
+function closeQuick() { document.querySelectorAll('.detail-row').forEach(r => r.remove()); }
+function openQuick(item, sw) {
+  closeQuick();
+  const goingOn = sw.checked;
+  const reasons = goingOn ? ON_REASONS : OUT_REASONS;
+  const row = document.getElementById('row-' + item.id);
+  const tr = document.createElement('tr');
+  tr.className = 'detail-row';
+  const name = 'q-' + item.id;
+  tr.innerHTML = `<td colspan="7"><div class="quick" role="group" aria-labelledby="qh-${item.id}">
+    <h3 id="qh-${item.id}">${goingOn ? '💡 Good news! What did you see at ' : 'What’s wrong with the light at '}${esc(item.address)}?</h3>
+    <div class="choices">${reasons.map((r, i) => `
+      <div class="form-check"><input class="form-check-input" type="radio" name="${name}" id="${name}-${i}" value="${esc(r)}" ${i === 0 ? 'checked' : ''}>
+      <label class="form-check-label" for="${name}-${i}">${esc(r)}</label></div>`).join('')}</div>
+    <div class="row g-2 mt-1">
+      <div class="col-12 col-md-4"><label class="form-label small fw-semibold mb-1" for="${name}-date">Date you noticed</label>
+        <input type="date" class="form-control" id="${name}-date" value="${today()}" max="${today()}"></div>
+      <div class="col-12 col-md-8"><label class="form-label small fw-semibold mb-1" for="${name}-note">Anything else? (optional)</label>
+        <input type="text" class="form-control" id="${name}-note" maxlength="200" placeholder="${goingOn ? 'e.g. fixed sometime last week' : 'e.g. out since the storm'}"></div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+      <button type="button" class="btn btn-outline-secondary" data-act="cancel">Cancel</button>
+      <button type="button" class="btn btn-primary fw-semibold" data-act="save" style="background:var(--primary-navy);border-color:var(--primary-navy)">Save</button>
+    </div>
+    <div class="saved-msg mt-2" aria-live="polite"></div>
+  </div></td>`;
+  row.after(tr);
+  tr.querySelector('input[type=radio]').focus();
+
+  tr.querySelector('[data-act=cancel]').onclick = () => { sw.checked = !goingOn; closeQuick(); sw.focus(); };
+  tr.querySelector('[data-act=save]').onclick = () => {
+    const choice = tr.querySelector(`input[name="${name}"]:checked`).value;
+    const note = tr.querySelector('#' + name + '-note').value.trim();
+    const date = tr.querySelector('#' + name + '-date').value || today();
+    item.status = goingOn ? 'working' : 'out';
+    if (goingOn) item.fixed_detail = choice; else { item.condition = choice; item.fixed_detail = ''; }
+    item.updated = date; item.update_note = note;
+    const saveBtn = tr.querySelector('[data-act=save]');
+    saveBtn.disabled = true; saveBtn.textContent = 'Sharing…';
+    sendToSheet({ kind: KIND_UPDATE, lightId: item.id, address: item.address, status: goingOn ? 'Working' : 'Out',
+      details: choice, ward: item.ward, precinct: item.precinct, note: noteWithDate(date, note) })
+      .then(() => showDone(item, true)).catch(() => showDone(item, false));
+  };
+}
+function showDone(item, ok) {
+  filterData();
+  const newRow = document.getElementById('row-' + item.id);
+  if (!newRow) return;
+  const done = document.createElement('tr');
+  done.className = 'detail-row';
+  done.innerHTML = `<td colspan="7"><div class="quick" style="border-color:${ok ? '#198754' : '#dc3545'}">
+    <div class="saved-msg" role="status">${ok
+      ? '<i class="bi bi-check-circle-fill text-success me-1" aria-hidden="true"></i><b>Thank you! Your update was shared.</b> Everyone will see it within a few minutes.'
+      : '<i class="bi bi-exclamation-triangle-fill text-danger me-1" aria-hidden="true"></i><b>We couldn\'t share that right now</b> (check your internet connection). You can email it to the organizers instead:'}</div>
+    <div class="d-flex flex-wrap gap-2 mt-2">
+      ${ok ? '' : `<a class="btn btn-success fw-semibold" href="${mailtoFor(item)}"><i class="bi bi-envelope me-1" aria-hidden="true"></i>Email the organizers</a>`}
+      <button type="button" class="btn btn-outline-secondary" data-act="close">Done</button>
+    </div></div></td>`;
+  newRow.after(done);
+  done.querySelector('[data-act=close]').onclick = closeQuick;
+  (done.querySelector('a') || done.querySelector('button')).focus();
+}
+
+function updateStats() {
+  const out = inventoryData.filter(d => d.status !== 'working');
+  const has = (d, words) => words.some(w => (d.condition || '').toLowerCase().includes(w));
+  document.getElementById('stat-total').textContent = inventoryData.length;
+  document.getElementById('stat-blinking').textContent = out.filter(d => has(d, ['blink', 'flicker', 'dim'])).length;
+  document.getElementById('stat-missing').textContent = out.filter(d => has(d, ['missing', 'pole', 'felled', 'leaning'])).length;
+  document.getElementById('stat-no-illum').textContent = out.filter(d => !has(d, ['blink', 'flicker', 'dim', 'missing', 'pole', 'felled', 'leaning'])).length;
+  document.getElementById('stat-working').textContent = inventoryData.filter(d => d.status === 'working').length;
+}
+
+function filterData() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const st = document.getElementById('statusFilter').value;
+  const ward = document.getElementById('wardFilter').value;
+  renderTable(inventoryData.filter(d =>
+    [d.address, d.city, d.visual_ref, d.notes, d.ward, d.precinct, d.condition, d.update_note].some(v => (v || '').toLowerCase().includes(q)) &&
+    (st === 'ALL' || (st === 'working' ? d.status === 'working' : d.status !== 'working')) &&
+    (ward === 'ALL' || d.ward === ward)));
+}
+['searchInput'].forEach(id => document.getElementById(id).addEventListener('input', filterData));
+['statusFilter', 'wardFilter'].forEach(id => document.getElementById(id).addEventListener('change', filterData));
+
+// ---- add-a-light form ----
+document.getElementById('formReasons').innerHTML = OUT_REASONS.map((r, i) => `
+  <div class="form-check"><input class="form-check-input" type="radio" name="formReason" id="fr-${i}" value="${esc(r)}" ${i === 0 ? 'checked' : ''}>
+  <label class="form-check-label" for="fr-${i}">${esc(r)}</label></div>`).join('');
+document.getElementById('outageForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const address = document.getElementById('formAddress').value.trim();
+  const city = 'East Cleveland, OH 44112';
+  const item = {
+    id: 'n-' + Date.now(), address, city,
+    ward: document.getElementById('formWard').value, precinct: document.getElementById('formPrecinct').value.trim(),
+    condition: document.querySelector('input[name=formReason]:checked').value,
+    visual_ref: document.getElementById('formVisual').value.trim(), notes: document.getElementById('formNotes').value.trim(),
+    status: 'out', updated: today(), added_here: true,
+    map_url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address + ', ' + city)
+  };
+  inventoryData.unshift(item);
+  filterData();
+  const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+  const a = document.getElementById('alertSuccess');
+  sendToSheet({ kind: KIND_NEW, lightId: item.id, address, status: 'Out', details: item.condition, ward: item.ward,
+    precinct: item.precinct, findIt: item.visual_ref, note: item.notes,
+    name: document.getElementById('formName').value.trim(), contact: document.getElementById('formContact').value.trim() })
+    .then(() => {
+      a.className = 'alert alert-success';
+      a.innerHTML = '<i class="bi bi-check-circle-fill me-1" aria-hidden="true"></i><b>Thank you! The light was added for everyone.</b> It will show for others within a few minutes.';
+      e.target.reset();
+    })
+    .catch(() => {
+      a.className = 'alert alert-warning';
+      a.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i><b>We couldn't share that right now</b> (check your internet connection).
+        <a class="btn btn-success btn-sm ms-2" href="${mailtoFor(item, item.visual_ref ? 'How to find it: ' + item.visual_ref : '')}">Email the organizers</a>`;
+    })
+    .finally(() => { btn.disabled = false; a.classList.remove('d-none'); a.focus && a.scrollIntoView({ block: 'nearest' }); });
+});
+
+// ---- find the address: device location or photo GPS ----
+const EC_CENTER = { lat: 41.533, lon: -81.579 };  // East Cleveland
+function kmBetween(a, b) {
+  const R = 6371, t = x => x * Math.PI / 180;
+  const dLat = t(b.lat - a.lat), dLon = t(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(t(a.lat)) * Math.cos(t(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function setStatus(html, kind) {
+  const el = document.getElementById('locateStatus');
+  el.className = 'small mt-2 ' + (kind === 'error' ? 'text-danger' : kind === 'ok' ? 'text-success' : 'text-muted');
+  el.innerHTML = html;
+}
+async function lookupAddress(lat, lon, source) {
+  if (kmBetween(EC_CENTER, { lat, lon }) > 8) {
+    setStatus('That location looks like it’s outside East Cleveland. Please type the address instead.', 'error'); return;
+  }
+  setStatus('Looking up the nearest address…');
+  try {
+    const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=' + lat.toFixed(6) + '&lon=' + lon.toFixed(6);
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error('lookup failed');
+    const j = await r.json(), a = j.address || {};
+    const road = a.road || a.pedestrian || a.residential || '';
+    if (!road) throw new Error('no street');
+    const short = road.replace(/\b(Road|Boulevard|Avenue|Street|Drive|Place|Court|Lane)$/, w => ({Road:'Rd',Boulevard:'Blvd',Avenue:'Ave',Street:'St',Drive:'Dr',Place:'Pl',Court:'Ct',Lane:'Ln'}[w]));
+    const addr = (a.house_number ? a.house_number + ' ' : '') + short;
+    document.getElementById('formAddress').value = addr;
+    setStatus('<i class="bi bi-check-circle-fill me-1" aria-hidden="true"></i>Found <b>' + esc(addr) + '</b> from your ' + source + '. ' +
+      (a.house_number ? 'Please check the house number. It can be off by a house or two.' : 'We couldn’t find an exact house number, so please add it if you know it.'), 'ok');
+    document.getElementById('formAddress').focus();
+  } catch (e) {
+    setStatus('We couldn’t look up an address right now. Please type it in.', 'error');
+  }
+}
+
+document.getElementById('useLocationBtn').addEventListener('click', () => {
+  if (!('geolocation' in navigator)) { setStatus('This browser can’t share your location. Please type the address.', 'error'); return; }
+  setStatus('Asking your phone for your location…');
+  navigator.geolocation.getCurrentPosition(
+    pos => lookupAddress(pos.coords.latitude, pos.coords.longitude, 'location'),
+    err => setStatus(err.code === 1
+      ? 'Location permission was turned off. You can allow it in your browser settings, or type the address.'
+      : 'We couldn’t get your location. Please try again outside, or type the address.', 'error'),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+});
+
+// Read GPS latitude/longitude from a JPEG's EXIF data (no outside libraries)
+function readJpegGps(buf) {
+  const v = new DataView(buf);
+  if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let off = 2;
+  while (off + 4 < v.byteLength) {
+    const marker = v.getUint16(off), size = v.getUint16(off + 2);
+    if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {  // "Exif"
+      const tiff = off + 10, le = v.getUint16(tiff) === 0x4949;
+      const u16 = o => v.getUint16(o, le), u32 = o => v.getUint32(o, le);
+      const ifd0 = tiff + u32(tiff + 4);
+      let gpsPtr = 0;
+      for (let i = 0, n = u16(ifd0); i < n; i++) { const e = ifd0 + 2 + i * 12; if (u16(e) === 0x8825) gpsPtr = tiff + u32(e + 8); }
+      if (!gpsPtr) return null;
+      const tags = {};
+      for (let i = 0, n = u16(gpsPtr); i < n; i++) {
+        const e = gpsPtr + 2 + i * 12, tag = u16(e), type = u16(e + 2), count = u32(e + 4);
+        if (type === 2) tags[tag] = String.fromCharCode(v.getUint8(count <= 4 ? e + 8 : tiff + u32(e + 8)));
+        else if (type === 5 && count === 3) {
+          const p = tiff + u32(e + 8), r = k => u32(p + k * 8) / (u32(p + k * 8 + 4) || 1);
+          tags[tag] = r(0) + r(1) / 60 + r(2) / 3600;
+        }
+      }
+      if (tags[2] == null || tags[4] == null) return null;
+      return { lat: tags[1] === 'S' ? -tags[2] : tags[2], lon: tags[3] === 'W' ? -tags[4] : tags[4] };
+    }
+    if ((marker & 0xFF00) !== 0xFF00) break;
+    off += 2 + size;
+  }
+  return null;
+}
+
+let lastPhotoUrl = null;
+document.getElementById('photoInput').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  setStatus('Reading your photo…');
+  // Make a copy with the location info removed (redrawing the picture drops hidden data)
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    if (lastPhotoUrl) URL.revokeObjectURL(lastPhotoUrl);
+    lastPhotoUrl = URL.createObjectURL(blob);
+    document.getElementById('photoThumb').src = lastPhotoUrl;
+    document.getElementById('photoDownload').href = lastPhotoUrl;
+    document.getElementById('photoPreview').classList.remove('d-none');
+  } catch (err) { /* preview is optional */ }
+  let gps = null;
+  try { gps = readJpegGps(await file.arrayBuffer()); } catch (err) {}
+  if (gps && isFinite(gps.lat) && isFinite(gps.lon) && (gps.lat || gps.lon)) lookupAddress(gps.lat, gps.lon, 'photo');
+  else setStatus('This photo doesn’t include location info. That’s common if the camera’s location setting is off or the photo was texted or posted first. Try <b>Use my location</b>, or type the address.', 'error');
+});
+
+filterData();
+if (!CITY_CSV) document.querySelectorAll('th.city-col').forEach(th => th.remove());
+else document.getElementById('cityNote').classList.remove('d-none');
+loadShared();
+</script>
+</body>
+</html>
