@@ -654,6 +654,43 @@ function setStatus(html, kind) {
   el.className = 'small mt-2 ' + (kind === 'error' ? 'text-danger' : kind === 'ok' ? 'text-success' : 'text-muted');
   el.innerHTML = html;
 }
+// Google Maps: paste a browser API key here (Maps JavaScript API + Geocoding API, restricted to your website).
+// Leave blank to use the free County and OpenStreetMap lookups only.
+const GOOGLE_MAPS_KEY = '';
+let googleReady = null;
+function loadGoogle() {
+  if (!GOOGLE_MAPS_KEY) return Promise.reject(new Error('no key'));
+  if (window.google && google.maps && google.maps.Geocoder) return Promise.resolve();
+  if (googleReady) return googleReady;
+  googleReady = new Promise((resolve, reject) => {
+    window.__gmapsReady = resolve;
+    window.gm_authFailure = () => { googleReady = null; reject(new Error('key refused')); };
+    const s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_MAPS_KEY) + '&v=weekly&loading=async&callback=__gmapsReady';
+    s.async = true; s.onerror = () => { googleReady = null; reject(new Error('load failed')); };
+    document.head.appendChild(s);
+  });
+  return googleReady;
+}
+// Google's closest street addresses to a spot (rooftop and building results only)
+async function googleNearest(lat, lon) {
+  await loadGoogle();
+  const res = await new google.maps.Geocoder().geocode({ location: { lat, lng: lon } });
+  const list = [], seen = new Set();
+  (res.results || []).forEach(r => {
+    if (!r.types.some(x => x === 'street_address' || x === 'premise' || x === 'subpremise')) return;
+    if (r.geometry.location_type && r.geometry.location_type !== 'ROOFTOP') return;  // skip guessed (interpolated) house numbers
+    const c = type => (r.address_components.find(a => a.types.includes(type)) || {}).short_name || '';
+    const num = c('street_number'), road = c('route'), town = c('locality');
+    if (!num || !road || (town && !/east cleveland/i.test(town) && !/cleveland/i.test(town))) return;
+    const addr = num + ' ' + shortStreet(road);
+    if (seen.has(addr)) return; seen.add(addr);
+    const g = r.geometry.location;
+    list.push({ addr, meters: kmBetween({ lat, lon }, { lat: g.lat(), lon: g.lng() }) * 1000, src: 'google' });
+  });
+  return list;
+}
+
 const COUNTY_ADDR_URL = 'https://gis.cuyahogacounty.gov/server/rest/services/NCGIDE/Addressing_Sites_Streets/FeatureServer/0/query';
 const shortStreet = s => String(s || '').replace(/\b(Road|Boulevard|Avenue|Street|Drive|Place|Court|Lane|Parkway)\b/g,
   w => ({Road:'Rd',Boulevard:'Blvd',Avenue:'Ave',Street:'St',Drive:'Dr',Place:'Pl',Court:'Ct',Lane:'Ln',Parkway:'Pkwy'}[w]));
@@ -727,8 +764,17 @@ async function lookupAddress(lat, lon, source) {
   }
   lastSpot = { lat, lon };
   setStatus('Looking up the closest addresses…');
-  let list = [];
-  try { list = await countyNearest(lat, lon); } catch (e) { list = []; }
+  // Ask the County (official address points) and Google (if set up) at the same time, then merge by distance
+  const [county, goog] = await Promise.all([
+    countyNearest(lat, lon).catch(() => []),
+    GOOGLE_MAPS_KEY ? googleNearest(lat, lon).catch(() => []) : Promise.resolve([])
+  ]);
+  const byAddr = new Map();
+  [...county, ...goog].forEach(c => {
+    const k = normAddr(c.addr), prev = byAddr.get(k);
+    if (!prev || (c.meters != null && c.meters < prev.meters)) byAddr.set(k, c);
+  });
+  let list = [...byAddr.values()].sort((a, b) => a.meters - b.meters).slice(0, 3);
   if (!list.length) { try { list = await osmNearest(lat, lon); } catch (e) { list = []; } }
   if (!list.length) {
     setStatus('We couldn’t find an address there. Please type it in, or <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="openPin2">move a pin on a map</button>.', 'error');
@@ -736,7 +782,7 @@ async function lookupAddress(lat, lon, source) {
     return;
   }
   showChoices(list, source);
-  if (pinMarker) pinMarker.setLatLng([lat, lon]);
+  movePin(lat, lon);
 }
 
 // 3. Wait a few seconds for a good GPS reading instead of taking the first, rough one
@@ -784,23 +830,60 @@ function loadLeaflet() {
     document.head.appendChild(s);
   });
 }
+let pinKind = '';
+function movePin(lat, lon) {
+  if (!pinMarker) return;
+  if (pinKind === 'google') pinMarker.setPosition({ lat, lng: lon }); else pinMarker.setLatLng([lat, lon]);
+}
+// Google satellite view, so people can see the actual pole and drop the pin on it
+async function openGooglePin(wrap) {
+  await loadGoogle();
+  const start = lastSpot || EC_CENTER;
+  const pos = { lat: start.lat, lng: start.lon };
+  if (!pinMap || pinKind !== 'google') {
+    pinKind = 'google';
+    pinMap = new google.maps.Map(document.getElementById('pinMap'), {
+      center: pos, zoom: lastSpot ? 20 : 15, mapTypeId: 'hybrid', tilt: 0,
+      streetViewControl: false, fullscreenControl: false, gestureHandling: 'greedy',
+      mapTypeControlOptions: { mapTypeIds: ['hybrid', 'roadmap'] }
+    });
+    pinMarker = new google.maps.Marker({ position: pos, map: pinMap, draggable: true, title: 'Streetlight pin' });
+    const relook = ll => lookupAddress(ll.lat(), ll.lng(), 'pin');
+    pinMarker.addListener('dragend', () => relook(pinMarker.getPosition()));
+    pinMap.addListener('click', ev => { pinMarker.setPosition(ev.latLng); relook(ev.latLng); });
+  } else {
+    pinMap.setCenter(pos); pinMap.setZoom(lastSpot ? 20 : 15); pinMarker.setPosition(pos);
+  }
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 async function openPinMap() {
   const wrap = document.getElementById('pinWrap');
   wrap.classList.remove('d-none');
+  if (GOOGLE_MAPS_KEY) {
+    try { await openGooglePin(wrap); return; } catch (e) { /* fall back to the free map below */ }
+  }
   try { await loadLeaflet(); } catch (e) { wrap.classList.add('d-none'); setStatus('The map couldn’t load. Please type the address.', 'error'); return; }
   const start = lastSpot || EC_CENTER;
-  if (!pinMap) {
-    pinMap = L.map('pinMap', { scrollWheelZoom: false }).setView([start.lat, start.lon], lastSpot ? 19 : 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(pinMap);
+  if (!pinMap || pinKind !== 'osm') {
+    pinKind = 'osm';
+    pinMap = L.map('pinMap', { scrollWheelZoom: false }).setView([start.lat, start.lon], lastSpot ? 20 : 15);
+    // Free aerial photos from Cuyahoga County (spring 2023, very sharp up close), with a street map option
+    const aerial = L.tileLayer('https://gis.cuyahogacounty.gov/server/rest/services/IMAGERY/2023_Spring_Ortho_WGS84/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 21, maxNativeZoom: 21, attribution: 'Aerial photos: Cuyahoga County' });
+    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 21, maxNativeZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+    const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', { maxZoom: 21, maxNativeZoom: 19, opacity: 0.9,
+      attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>' });
+    aerial.addTo(pinMap); labels.addTo(pinMap);
+    L.control.layers({ 'Aerial photo': aerial, 'Street map': streets }, { 'Street names': labels }, { collapsed: false }).addTo(pinMap);
     pinMarker = L.marker([start.lat, start.lon], { draggable: true, keyboard: true, title: 'Streetlight pin' }).addTo(pinMap);
     const relook = ll => lookupAddress(ll.lat, ll.lng, 'pin');
     pinMarker.on('dragend', () => relook(pinMarker.getLatLng()));
     pinMap.on('click', ev => { pinMarker.setLatLng(ev.latlng); relook(ev.latlng); });
   } else {
-    pinMap.setView([start.lat, start.lon], lastSpot ? 19 : 15); pinMarker.setLatLng([start.lat, start.lon]);
+    pinMap.setView([start.lat, start.lon], lastSpot ? 20 : 15); pinMarker.setLatLng([start.lat, start.lon]);
   }
-  setTimeout(() => pinMap.invalidateSize(), 50);
+  setTimeout(() => pinMap && pinMap.invalidateSize && pinMap.invalidateSize(), 50);
   wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
